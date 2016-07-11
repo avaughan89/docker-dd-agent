@@ -2,8 +2,10 @@ FROM debian:jessie
 
 MAINTAINER Datadog <package@datadoghq.com>
 
-ENV DOCKER_DD_AGENT yes
-ENV AGENT_VERSION 1:5.8.0-1
+ENV DOCKER_DD_AGENT=yes \
+    AGENT_VERSION=1:5.8.4-1
+
+COPY entrypoint.sh supervisor.conf /
 
 # Install the Agent
 RUN echo "deb http://apt.datadoghq.com/ stable main" > /etc/apt/sources.list.d/datadog.list \
@@ -16,22 +18,23 @@ RUN echo "deb http://apt.datadoghq.com/ stable main" > /etc/apt/sources.list.d/d
 # Configure the Agent
 # 1. Listen to statsd from other containers
 # 2. Turn syslog off
+# 3. Use custom supervisor.conf
 RUN mv /etc/dd-agent/datadog.conf.example /etc/dd-agent/datadog.conf \
  && sed -i -e"s/^.*non_local_traffic:.*$/non_local_traffic: yes/" /etc/dd-agent/datadog.conf \
- && sed -i -e"s/^.*log_to_syslog:.*$/log_to_syslog: no/" /etc/dd-agent/datadog.conf
-
-COPY entrypoint.sh /entrypoint.sh
+ && sed -i -e"s/^.*log_to_syslog:.*$/log_to_syslog: no/" /etc/dd-agent/datadog.conf \
+ && mv /supervisor.conf /etc/dd-agent/supervisor.conf
 
 # Expose DogStatsD port
 EXPOSE 8125/udp
 
 # Set proper permissions to allow running as a non-root user
-RUN chmod g+w /etc/dd-agent/datadog.conf
-RUN chmod -R g+w /var/log/datadog
-RUN chmod g+w /etc/dd-agent
+RUN chmod g+w /etc/dd-agent/datadog.conf \
+ && chmod -R g+w /var/log/datadog \
+ && chmod g+w /etc/dd-agent \
+ && chmod g+w /opt/datadog-agent/run/
 
 ENTRYPOINT ["/entrypoint.sh"]
 
 USER 1001
 
-CMD /opt/datadog-agent/embedded/bin/python /opt/datadog-agent/agent/dogstatsd.py
+CMD ["supervisord", "-n", "-c", "/etc/dd-agent/supervisor.conf"]
